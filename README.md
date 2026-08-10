@@ -31,27 +31,27 @@ git-will --dir <path> …    # Run against another repo without cd
 
 ```
 ┌──────────────────────────────────────────┐
-│  GIT WILL — codiev                        │
+│  GIT WILL — example-app                   │
 └──────────────────────────────────────────┘
 
-repo https://github.com/stffinfcti/codiev.git
+repo https://github.com/example/example-app.git
 branch main  ·  commits 449  ·  repo bus factor ~2
 
 Authors
 ───────
-  ✓ Ford Openclaw           224439 ██████████████████████████████
-  ✓ stffinfcti               86230 ██████████████
-  ✓ Viktor Ai                 7787 █
+  ✓ alex                    224439 ██████████████████████████████
+  ✓ sam                      86230 ██████████████
+  ✓ jordan                    7787 █
 
 Bus factor 1 — files only one person understands
 ───────────────────────────────────────────────
-  ⚠ codiev-core/codiev/agents.py              96% by stffinfcti
-  ⚠ codiev-core/codiev/run_agent.py           99% by Ford Openclaw
+  ⚠ src/core/engine.js                        96% by sam
+  ⚠ src/core/runner.js                        99% by alex
 
 Most dangerous — highest single-owner share
 ──────────────────────────────────────────
-  ✗ codiev-core/codiev/agents.py    15836 lines, 96% by stffinfcti
-  ✗ codiev-core/codiev/run_agent.py  10864 lines, 99% by Ford Openclaw
+  ✗ src/core/engine.js              15836 lines, 96% by sam
+  ✗ src/core/runner.js              10864 lines, 99% by alex
 
 Next: git-will draft — write the will while you're still alive.
 ```
@@ -61,7 +61,7 @@ Next: git-will draft — write the will while you're still alive.
 Walks you through the succession document interactively:
 
 ```
-▸ Who's the main maintainer? [Ford Openclaw]
+▸ Who's the main maintainer? [alex]
 ▸ Who's the backup (the person who'd take over)? []
 ▸ Who gets the keys (repo access, npm/pypi publish, domain, CI)? []
 ▸ Your wishes if you can't maintain this anymore? []
@@ -73,7 +73,7 @@ Writes `WILL.md` to the repo root — ownership snapshot, succession plan, first
 Works with piped input too (CI/scripts):
 
 ```bash
-printf "waxhy\nmarco\nwaxhy + marco\ntake the good parts, archive the rest\n\n" | git-will draft
+printf "alex\nsam\nalex + sam\ntake the good parts, archive the rest\n\n" | git-will draft
 ```
 
 ## What it detects
@@ -90,19 +90,19 @@ printf "waxhy\nmarco\nwaxhy + marco\ntake the good parts, archive the rest\n\n" 
 ## The WILL.md
 
 ```markdown
-# WILL.md — succession plan for codiev
+# WILL.md — succession plan for example-app
 
 ## The short version
-- **Maintainer:** waxhy
-- **Backup / successor:** marco
-- **Keys go to:** waxhy + marco
+- **Maintainer:** alex
+- **Backup / successor:** sam
+- **Keys go to:** alex + sam
 - **Wishes:** take the good parts, archive the rest
 
 ## Succession plan
 ### If I can't maintain this anymore
 1. **Wishes:** take the good parts, archive the rest
-2. **Hand off to:** marco
-3. **Keys:** waxhy + marco
+2. **Hand off to:** sam
+3. **Keys:** alex + sam
 
 ### First 48 hours for the successor
 1. Read the knowledge map — those files are the core.
@@ -111,7 +111,7 @@ printf "waxhy\nmarco\nwaxhy + marco\ntake the good parts, archive the rest\n\n" 
 
 ## AI-readable handoff (machine section)
 ### Critical files
-- `codiev-core/codiev/agents.py` — bus factor 1, 96% by stffinfcti (15836 lines)
+- `src/core/engine.js` — bus factor 1, 96% by sam (15836 lines)
 ```
 
 ## Why
