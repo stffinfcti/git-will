@@ -1,37 +1,53 @@
-# ⚰️ git-will
+# git-will
 
 **Your repo has no will. If you vanish tomorrow, the code dies with you.**
 
-`git-will` analyzes your repository's ownership structure and writes `WILL.md` — the succession plan for your code: who knows what, who gets the keys, your wishes, and an AI-readable handoff section for the next maintainer.
+`git-will` is a zero-dependency Node CLI that reads your git history, shows who actually owns the code, and writes `WILL.md` — a succession plan for the next maintainer.
 
-> 65% of popular projects have a bus factor ≤ 2 ([Wikipedia, citing a 2015/16 study of 133 popular GitHub projects](https://en.wikipedia.org/wiki/Bus_factor)). One person holds the knowledge. If that person disappears, the project stalls and the code dies with them. Write the will while you're still alive.
+Most tools stop at “you have a bus-factor problem.” This one makes you write the will.
 
-## Install
+> About 65% of popular projects have a bus factor ≤ 2 ([Wikipedia](https://en.wikipedia.org/wiki/Bus_factor)). Write the plan while you’re still here.
+
+## Quick start
 
 ```bash
-npx git-will scan      # no install — runs instantly
-npm i -g git-will      # or install globally
+npx git-will scan          # see ownership + risk
+npx git-will draft         # write WILL.md interactively
 ```
 
-Zero dependencies. Runs locally on your git history. Nothing leaves your machine.
+Requirements: **Node 18+** and **git**. No npm dependencies. Analysis stays on your machine.
+
+```bash
+npm i -g git-will          # optional global install
+```
+
+## What you get
+
+| Command | Result |
+|--------|--------|
+| `scan` | Terminal report: authors, single-owner files, danger list, repo bus-factor estimate |
+| `scan --json` | Same data as versioned JSON (`git-will@1`) for scripts/CI |
+| `draft` | Interactive `WILL.md`: maintainer, backup, keys, wishes, handoff checklist |
+| `draft --yes` | Non-interactive defaults (safe for CI) |
 
 ## Usage
 
 ```bash
-git-will scan              # Analyze ownership + bus factor (git blame)
-git-will scan --json       # Machine-readable analysis (versioned schema: git-will@1)
-git-will scan --fast       # Faster approximate analysis via git log --numstat
-git-will draft             # Interactively write WILL.md
-git-will draft --yes       # Write WILL.md with defaults (CI-safe)
-git-will draft --force     # Overwrite existing WILL.md (backs up to WILL.md.bak)
-git-will --dir <path> …    # Run against another repo without cd
+git-will scan                 # blame-based ownership (accurate)
+git-will scan --json          # machine-readable output
+git-will scan --fast          # faster approx via git log --numstat
+git-will draft                # interactive WILL.md
+git-will draft --yes          # CI-friendly defaults
+git-will draft --force        # overwrite WILL.md (backs up to WILL.md.bak)
+git-will --dir path/to/repo … # analyze another repo without cd
+git-will --version
 ```
 
-### `git-will scan`
+### Example `scan`
 
 ```
 ┌──────────────────────────────────────────┐
-│  GIT WILL — example-app                   │
+│  GIT WILL — example-app                  │
 └──────────────────────────────────────────┘
 
 repo https://github.com/example/example-app.git
@@ -56,9 +72,7 @@ Most dangerous — highest single-owner share
 Next: git-will draft — write the will while you're still alive.
 ```
 
-### `git-will draft`
-
-Walks you through the succession document interactively:
+### Example `draft`
 
 ```
 ▸ Who's the main maintainer? [alex]
@@ -68,58 +82,43 @@ Walks you through the succession document interactively:
 ▸ Anything future maintainers should know? []
 ```
 
-Writes `WILL.md` to the repo root — ownership snapshot, succession plan, first-48-hours checklist for the successor, and an **AI-readable machine section** so tooling and future maintainers can act on it programmatically.
-
-Works with piped input too (CI/scripts):
+Pipe answers for scripts:
 
 ```bash
-printf "alex\nsam\nalex + sam\ntake the good parts, archive the rest\n\n" | git-will draft
+printf "alex\nsam\nalex + sam\narchive if unused\n\n" | git-will draft
 ```
 
-## What it detects
+## How ownership is measured
 
-- **Per-file line ownership** — who authored each file (default: `git blame --use-mailmap`; honors `.mailmap`)
-- **Bus factor (per file)** — files where ONE author holds ≥ 80% of the lines
-- **Repo bus factor (~N)** — truck-factor style heuristic: greedy removal of knowledge owners until ≤ 50% of owned files retain an owner (documented estimate, not a research metric)
-- **Danger files** — bus-factor-1 files where one author holds ≥ 85% of the lines (sorted by size; no minimum line count)
-- **Knowledge map** — which files each author dominates by line ownership
-- **Generated junk** — lockfiles, binaries, build output (auto-skipped so they don't pollute the analysis)
+Defaults are **honest heuristics**, not academic truck-factor research.
 
-`--fast` trades blame accuracy for speed: ownership is approximated from `git log --numstat` (lines added per author), which is better for huge repos and CI timeouts.
+| Signal | Rule |
+|--------|------|
+| Per-file ownership | Line authorship via `git blame` (honors `.mailmap`) |
+| Bus factor 1 (file) | One author holds **≥ 80%** of counted lines |
+| Danger files | Bus-factor-1 files with **≥ 85%** single-author share (sorted by size) |
+| Repo bus factor (~N) | Greedy removal of knowledge owners until ≤ 50% of owned files retain an owner |
+| Skipped noise | Lockfiles, binaries, build output, common generated dirs |
 
-## The WILL.md
+**`--fast`** skips blame and approximates ownership from `git log --numstat` (lines added). Use it on huge repos or tight CI budgets; prefer default blame when accuracy matters.
 
-```markdown
-# WILL.md — succession plan for example-app
+## What’s in WILL.md
 
-## The short version
-- **Maintainer:** alex
-- **Backup / successor:** sam
-- **Keys go to:** alex + sam
-- **Wishes:** take the good parts, archive the rest
+A practical handoff doc, not a manifesto:
 
-## Succession plan
-### If I can't maintain this anymore
-1. **Wishes:** take the good parts, archive the rest
-2. **Hand off to:** sam
-3. **Keys:** alex + sam
+- Maintainer, backup, who gets the keys, wishes
+- Ownership snapshot from the last scan
+- First-48-hours checklist for a successor
+- Structured “machine section” for tooling / future maintainers
 
-### First 48 hours for the successor
-1. Read the knowledge map — those files are the core.
-2. Run `npx git-will scan` yourself.
-3. Open a PR within a week to confirm you have access.
+Never put real secrets in `WILL.md` — names of people and systems only.
 
-## AI-readable handoff (machine section)
-### Critical files
-- `src/core/engine.js` — bus factor 1, 96% by sam (15836 lines)
-```
+## Why this exists
 
-## Why
+Bus-factor dashboards are common. Succession documents are not.
 
-- The internet's software is one missed email away from the next event-stream.
-- Standard tooling tells you **you have** a bus factor problem. Nothing writes the **will**.
-- Every repo deserves a successor, even the small ones. Especially the small ones.
+If the person who knows `src/core/` disappears, a chart won’t ship a patch. A will might.
 
 ## License
 
-MIT. Go write your will.
+MIT
