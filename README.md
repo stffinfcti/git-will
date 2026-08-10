@@ -31,7 +31,7 @@ git-will draft --yes       # Write WILL.md with defaults (CI-safe)
 │  GIT WILL — codiev                        │
 └──────────────────────────────────────────┘
 
-repo https://github.com/waxhy/codiev.git
+repo https://github.com/stffinfcti/codiev.git
 branch main  ·  commits 449
 
 Authors
