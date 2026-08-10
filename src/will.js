@@ -13,19 +13,90 @@
 const readline = require("readline");
 const path = require("path");
 
-/** Ask a single question on stdin. Returns trimmed answer (may be empty). */
-function ask(rl, question) {
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => resolve(answer.trim()));
-  });
-}
+/**
+ * Prompt engine that works with BOTH interactive terminals and piped stdin.
+ *
+ * - Piped input (e.g. `printf "a\nb\n" | git-will draft`): all lines are
+ *   collected up front, then consumed in order. No races.
+ * - Interactive TTY: real prompts via rl.question().
+ */
+function createPrompter() {
+  const isTTY = Boolean(process.stdin.isTTY);
+  const queue = [];
+  let closed = false;
+  let onLine = null;
+  let closedPromise = null;
 
-/** Ask a yes/no question, default true. */
-async function askYesNo(rl, question, def = true) {
-  const hint = def ? "Y/n" : "y/N";
-  const answer = await ask(rl, `${question} [${hint}] `);
-  if (!answer) return def;
-  return /^y|yes/i.test(answer);
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  rl.on("line", (line) => {
+    if (onLine) {
+      const cb = onLine;
+      onLine = null;
+      cb(line);
+    } else {
+      queue.push(line);
+    }
+  });
+  closedPromise = new Promise((resolve) => {
+    rl.on("close", () => {
+      closed = true;
+      resolve();
+      if (onLine) {
+        const cb = onLine;
+        onLine = null;
+        cb("");
+      }
+    });
+  });
+
+  /**
+   * For non-TTY (piped) input: wait until ALL stdin lines have been read
+   * before answering any question. This removes the race entirely.
+   */
+  async function ready() {
+    if (!isTTY) {
+      await closedPromise;
+    }
+  }
+
+  /** Ask a single question. Returns trimmed answer (may be empty). */
+  function ask(question) {
+    return new Promise((resolve) => {
+      if (queue.length > 0) {
+        resolve(queue.shift().trim());
+        return;
+      }
+      if (!isTTY || closed) {
+        resolve(""); // piped stdin exhausted — no more answers
+        return;
+      }
+      onLine = (line) => resolve(line.trim());
+      rl.question(question, (answer) => {
+        if (onLine) {
+          onLine = null;
+          resolve(answer.trim());
+        }
+      });
+    });
+  }
+
+  /** Ask a yes/no question, default true. */
+  async function askYesNo(question, def = true) {
+    const hint = def ? "Y/n" : "y/N";
+    const answer = await ask(`${question} [${hint}] `);
+    if (!answer) return def;
+    return /^y|yes/i.test(answer);
+  }
+
+  function close() {
+    try {
+      rl.close();
+    } catch {
+      /* already closed */
+    }
+  }
+
+  return { ask, askYesNo, close, ready, isTTY };
 }
 
 /** Build the AI-readable handoff section from the analysis. */
@@ -74,39 +145,40 @@ async function draftWill(opts) {
   const repoName = opts.repoName || path.basename(process.cwd());
   const a = opts.answers || {};
 
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const prompter = createPrompter();
   const answers = { ...a };
 
   try {
-    if (!answers.maintainer) {
-      const top = analysis.authors[0];
-      answers.maintainer = await ask(
-        rl,
-        `▸ Who's the main maintainer? [${top ? top.name : "you"}] `
-      ) || (top ? top.name : "you");
-    }
-    if (!answers.backup) {
-      answers.backup = await ask(rl, "▸ Who's the backup (the person who'd take over)? [] ");
-    }
-    if (!answers.keys) {
-      answers.keys = await ask(
-        rl,
-        "▸ Who gets the keys (repo access, npm/pypi publish, domain, CI)? [] "
-      );
-    }
-    if (!answers.wishes) {
-      console.log("\n  (Empty line to skip — e.g. 'archived as-is', 'fork continues', 'hand to X')");
-      answers.wishes = await ask(rl, "▸ Your wishes if you can't maintain this anymore? [] ");
-    }
-    if (!answers.notes) {
-      answers.notes = await ask(rl, "▸ Anything future maintainers should know? [] ");
-    }
-    if (!answers.blessed) {
-      const defYes = analysis.dangerFiles.length === 0;
-      answers.blessed = await askYesNo(rl, "▸ Are there files ONLY you understand right now?", defYes);
+    await prompter.ready(); // drain piped stdin before asking anything
+    if (!opts.skipPrompts) {
+      if (!answers.maintainer) {
+        const top = analysis.authors[0];
+        answers.maintainer = await prompter.ask(
+          `▸ Who's the main maintainer? [${top ? top.name : "you"}] `
+        ) || (top ? top.name : "you");
+      }
+      if (!answers.backup) {
+        answers.backup = await prompter.ask("▸ Who's the backup (the person who'd take over)? [] ");
+      }
+      if (!answers.keys) {
+        answers.keys = await prompter.ask(
+          "▸ Who gets the keys (repo access, npm/pypi publish, domain, CI)? [] "
+        );
+      }
+      if (!answers.wishes) {
+        console.log("\n  (Empty line to skip — e.g. 'archived as-is', 'fork continues', 'hand to X')");
+        answers.wishes = await prompter.ask("▸ Your wishes if you can't maintain this anymore? [] ");
+      }
+      if (!answers.notes) {
+        answers.notes = await prompter.ask("▸ Anything future maintainers should know? [] ");
+      }
+      if (!answers.blessed) {
+        const defYes = analysis.dangerFiles.length === 0;
+        answers.blessed = await prompter.askYesNo("▸ Are there files ONLY you understand right now?", defYes);
+      }
     }
   } finally {
-    rl.close();
+    prompter.close();
   }
 
   const lonely = analysis.lonelyFiles;

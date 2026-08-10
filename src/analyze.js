@@ -70,10 +70,10 @@ function blameOwnership(repoDir) {
     /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|Cargo\.lock|Gemfile\.lock|poetry\.lock|composer\.lock|go\.sum|Pipfile\.lock|mix\.lock)$/,
     /(^|\/)\.(gitmodules|env|env\.\w+)$/,
     /\.(min\.js|min\.css|map)$/,
-    /(^|\/)dist\//,
-    /(^|\/)build\//,
-    /(^|\/)node_modules\//,
-    /(^|\/)vendor\//,
+    /(^|\/)(dist|build|out|coverage|\.next|\.nuxt|\.cache|\.parcel-cache|\.turbo|\.vite|node_modules|vendor|\.venv|venv|__pycache__|\.pytest_cache|target|\.gradle)(\/|$)/,
+    /(^|\/)(backup|backups|\.bak|old|archive)[-_]?[\w.-]*(\/|$)/i,
+    /(^|\/)\.(idea|vscode|svelte-kit|docusaurus|github|gitlab|husky|circleci)(\/|$)/,
+    /\.(png|jpg|jpeg|gif|webp|ico|svg|woff|woff2|ttf|otf|eot|pdf|zip|tar|gz|pyc|so|dll|exe|lockb|node|wav|mp3|mp4|mov|avi|webm|ogg|flac)$/i,
   ];
 
   const files = tracked.filter((f) => !SKIP.some((re) => re.test(f)));

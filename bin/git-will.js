@@ -49,9 +49,9 @@ function pct(share) {
 function renderPaper(result) {
   const meta = result.meta;
   const lines = [];
-  lines.push(c(BRAND + BOLD, "┌──────────────────────────────────────┐"));
+  lines.push(c(BRAND + BOLD, "┌────────────────────────────────────────┐"));
   lines.push(c(BRAND + BOLD, "│  GIT WILL — ownership & succession scan  │"));
-  lines.push(c(BRAND + BOLD, "└──────────────────────────────────────┘"));
+  lines.push(c(BRAND + BOLD, "└────────────────────────────────────────┘"));
   lines.push("");
   if (meta.remote) lines.push(c(DIM, "repo ") + c(CYAN, meta.remote));
   lines.push(c(DIM, "branch ") + meta.branch + c(DIM, "  ·  commits ") + meta.commitCount);
@@ -150,6 +150,7 @@ async function main() {
         repoName: path.basename(repoDir),
         analysis: result,
         answers: defaults,
+        skipPrompts: true,
       });
     } else {
       md = await draftWill({
