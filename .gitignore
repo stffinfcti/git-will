@@ -1,0 +1,4 @@
+node_modules/
+WILL.md
+*.log
+.DS_Store
