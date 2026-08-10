@@ -4,7 +4,7 @@
 
 `git-will` analyzes your repository's ownership structure and writes `WILL.md` — the succession plan for your code: who knows what, who gets the keys, your wishes, and an AI-readable handoff section for the next maintainer.
 
-> 65% of popular projects have a bus factor ≤ 2. One person holds the knowledge. If that person disappears, the project stalls and the code dies with them. **Fix the bus factor before the bus does.**
+> 65% of popular projects have a bus factor ≤ 2 ([Wikipedia, citing a 2015/16 study of 133 popular GitHub projects](https://en.wikipedia.org/wiki/Bus_factor)). One person holds the knowledge. If that person disappears, the project stalls and the code dies with them. Write the will while you're still alive.
 
 ## Install
 
@@ -19,17 +19,17 @@ Zero dependencies. Runs locally on your git history. Nothing leaves your machine
 
 ```bash
 git-will scan              # Analyze ownership + bus factor
+git-will scan --json       # Machine-readable analysis (versioned schema: git-will@1)
 git-will draft             # Interactively write WILL.md
 git-will draft --yes       # Write WILL.md with defaults (CI-safe)
-git-will paper             # Full JSON analysis (for tooling)
 ```
 
 ### `git-will scan`
 
 ```
-┌────────────────────────────────────────┐
-│  GIT WILL — ownership & succession scan  │
-└────────────────────────────────────────┘
+┌──────────────────────────────────────────┐
+│  GIT WILL — codiev                        │
+└──────────────────────────────────────────┘
 
 repo https://github.com/waxhy/codiev.git
 branch main  ·  commits 449
@@ -50,7 +50,7 @@ Most dangerous — single owner, meaningful size
   ✗ codiev-core/codiev/agents.py    15836 lines, 96% by stffinfcti
   ✗ codiev-core/codiev/run_agent.py  10864 lines, 99% by Ford Openclaw
 
-Next: git-will draft to write WILL.md — fix the bus factor before the bus does.
+Next: git-will draft — write the will while you're still alive.
 ```
 
 ### `git-will draft`
@@ -77,9 +77,9 @@ printf "waxhy\nmarco\nwaxhy + marco\ntake the good parts, archive the rest\n\n" 
 
 - **Per-file line ownership** — who actually authored each file (via `git blame`)
 - **Bus factor** — files where ONE author holds ≥ 80% of the knowledge
-- **Danger files** — single-owner files with meaningful size (the ones that hurt)
+- **Danger files** — single-owner files over 100 lines (the ones that hurt)
 - **Knowledge map** — which files each author uniquely understands
-- **Ghost files** — generated artifacts, lockfiles, binaries (auto-skipped)
+- **Generated junk** — lockfiles, binaries, build output (auto-skipped so they don't pollute the analysis)
 
 ## The WILL.md
 

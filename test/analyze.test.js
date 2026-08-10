@@ -44,17 +44,17 @@ test("analyze detects authors and ownership on fixture repo", () => {
   const names = result.authors.map((a) => a.name);
   assert.ok(names.includes("Alice"), "Alice present");
   assert.ok(names.includes("Bob"), "Bob present");
-  // alpha.js should be majority Bob (4 of 6 lines — 66.7%)
-  const alpha = result.busFactorFiles.find((f) => f.file === "alpha.js");
+  // alpha.js is 5 lines, all rewritten by Bob — bus factor 1, topAuthor Bob
+  const alpha = result.lonelyFiles.find((f) => f.file === "alpha.js");
   assert.ok(alpha, "alpha.js is a bus-factor file");
-  assert.strictEqual(alpha.topAuthor, "Bob", "Bob owns majority of alpha.js");
+  assert.strictEqual(alpha.topAuthor, "Bob", "Bob owns alpha.js outright");
   // beta.js is 100% Bob -> single owner
-  const beta = result.busFactorFiles.find((f) => f.file === "beta.js");
+  const beta = result.lonelyFiles.find((f) => f.file === "beta.js");
   assert.ok(beta, "beta.js single-owner");
   assert.strictEqual(beta.topAuthor, "Bob");
   assert.ok(result.totals.files >= 3, "three tracked files analyzed");
   // gamma.js stays 100% Alice -> her ownership survives
-  const gamma = result.busFactorFiles.find((f) => f.file === "gamma.js");
+  const gamma = result.lonelyFiles.find((f) => f.file === "gamma.js");
   assert.ok(gamma, "gamma.js single-owner");
   assert.strictEqual(gamma.topAuthor, "Alice");
 });

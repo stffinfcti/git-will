@@ -83,7 +83,9 @@ function blameOwnership(repoDir) {
   for (const file of files) {
     let lines;
     try {
-      lines = git(repoDir, ["blame", "--line-porcelain", "--", file]);
+      // Blame HEAD, not the working tree — otherwise uncommitted edits
+      // produce a phantom "Not Committed Yet" author.
+      lines = git(repoDir, ["blame", "HEAD", "--line-porcelain", "--", file]);
     } catch {
       continue; // binary or unblamable — skip
     }

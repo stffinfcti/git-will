@@ -36,9 +36,9 @@ function usage() {
   console.log(c(DIM, "Your repo has no will. This writes it.\n"));
   console.log("Usage:");
   console.log("  " + c(CYAN, "git-will scan") + "            " + c(DIM, "Analyze ownership + bus factor"));
+  console.log("  " + c(CYAN, "git-will scan --json") + "    " + c(DIM, "Same analysis as machine-readable JSON"));
   console.log("  " + c(CYAN, "git-will draft") + "           " + c(DIM, "Interactively write WILL.md"));
   console.log("  " + c(CYAN, "git-will draft --yes") + "     " + c(DIM, "Write WILL.md with defaults (CI-safe)"));
-  console.log("  " + c(CYAN, "git-will paper") + "           " + c(DIM, "Print a human-readable report"));
   console.log("  " + c(CYAN, "git-will --version") + "      " + c(DIM, "Show version"));
 }
 
@@ -49,9 +49,16 @@ function pct(share) {
 function renderPaper(result) {
   const meta = result.meta;
   const lines = [];
-  lines.push(c(BRAND + BOLD, "┌────────────────────────────────────────┐"));
-  lines.push(c(BRAND + BOLD, "│  GIT WILL — ownership & succession scan  │"));
-  lines.push(c(BRAND + BOLD, "└────────────────────────────────────────┘"));
+  const repoLabel = meta.remote
+    ? meta.remote.replace(/^.*[\/:]([^\/:]+?)(\.git)?$/, "$1")
+    : "this repo";
+  const title = "GIT WILL — " + repoLabel;
+  const boxW = Math.max(42, title.length + 4);
+  const bar = "─".repeat(boxW - 2);
+  const pad = (s) => "│  " + s + " ".repeat(Math.max(0, boxW - 6 - s.length)) + "  │";
+  lines.push(c(BRAND + BOLD, "┌" + bar + "┐"));
+  lines.push(c(BRAND + BOLD, pad(title)));
+  lines.push(c(BRAND + BOLD, "└" + bar + "┘"));
   lines.push("");
   if (meta.remote) lines.push(c(DIM, "repo ") + c(CYAN, meta.remote));
   lines.push(c(DIM, "branch ") + meta.branch + c(DIM, "  ·  commits ") + meta.commitCount);
@@ -95,7 +102,7 @@ function renderPaper(result) {
     lines.push("");
   }
 
-  lines.push(c(DIM, "Next: ") + c(CYAN, "git-will draft") + c(DIM, " to write WILL.md — fix the bus factor before the bus does."));
+  lines.push(c(DIM, "Next: ") + c(CYAN, "git-will draft") + c(DIM, " — write the will while you're still alive."));
   return lines.join("\n");
 }
 
@@ -123,12 +130,17 @@ async function main() {
   }
 
   if (command === "scan") {
+    if (args.includes("--json")) {
+      console.log(JSON.stringify({ schema: "git-will@1", generated: new Date().toISOString(), ...result }, null, 2));
+      return;
+    }
     console.log(renderPaper(result));
     return;
   }
 
   if (command === "paper") {
-    console.log(JSON.stringify(result, null, 2));
+    // Back-compat alias for scan --json (used to be a separate command)
+    console.log(JSON.stringify({ schema: "git-will@1", generated: new Date().toISOString(), ...result }, null, 2));
     return;
   }
 
@@ -160,7 +172,7 @@ async function main() {
     }
     fs.writeFileSync(outPath, md, "utf8");
     console.log(c(GREEN, "✓ Wrote ") + c(CYAN, outPath));
-    console.log(c(DIM, "  Read it. Fix the bus factor before the bus does."));
+    console.log(c(DIM, "  Read it. Then write the will you want to leave."));
     return;
   }
 
