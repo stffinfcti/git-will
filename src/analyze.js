@@ -4,16 +4,20 @@
  *
  * Discovers:
  *  - Per-file line ownership (who authored the most lines)
- *  - Bus factor (files where ONE author holds the knowledge)
- *  - Expertise map (which files each author uniquely understands)
- *  - Danger windows (files with high churn + concentrated ownership)
+ *  - Bus factor (files where ONE author holds ≥ 80% of lines)
+ *  - Expertise map (which files each author dominates)
+ *  - Danger files (bus-factor-1 files with ≥ 85% single-author share)
  *
  * Pure git commands, zero dependencies. All analysis is local and offline.
  */
 
 "use strict";
 
-const { execFileSync } = require("child_process");
+const { execFile, execFileSync } = require("child_process");
+const { promisify } = require("util");
+
+const execFileAsync = promisify(execFile);
+const BLAME_CONCURRENCY = 8;
 
 /** Run a git command in the repo dir, return stdout trimmed. */
 function git(repoDir, args) {
@@ -30,6 +34,21 @@ function git(repoDir, args) {
   }
 }
 
+/** Async git — used for parallel blame workers. */
+async function gitAsync(repoDir, args) {
+  try {
+    const { stdout } = await execFileAsync("git", args, {
+      cwd: repoDir,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    return stdout;
+  } catch (err) {
+    const stderr = (err.stderr || "").trim();
+    throw new Error(`git ${args.join(" ")} failed: ${stderr || err.message}`);
+  }
+}
+
 function isRepo(repoDir) {
   try {
     git(repoDir, ["rev-parse", "--is-inside-work-tree"]);
@@ -39,28 +58,100 @@ function isRepo(repoDir) {
   }
 }
 
-/** Normalize author identity: merge email aliases under a display name. */
+/** True when HEAD resolves to at least one commit. */
+function hasCommits(repoDir) {
+  try {
+    const count = git(repoDir, ["rev-list", "--count", "HEAD"]).trim();
+    return count !== "" && count !== "0";
+  } catch {
+    return false;
+  }
+}
+
+/** Strip surrounding <> from porcelain author-mail values. */
+function stripMailAngles(email) {
+  const s = (email || "").trim();
+  if (s.startsWith("<") && s.endsWith(">")) return s.slice(1, -1).trim();
+  return s;
+}
+
+/** Normalize author identity: merge email aliases; casefold display names. */
 function normalizeAuthor(name, email) {
   const cleanName = (name || "").trim();
-  const cleanEmail = (email || "").trim();
+  const cleanEmail = stripMailAngles(email).toLowerCase();
   // GitHub noreply addresses: 12345678+user@users.noreply.github.com -> user
   const noreplyMatch = cleanEmail.match(/^\d+\+([^@]+)@users\.noreply\.github\.com$/);
-  if (noreplyMatch) return noreplyMatch[1];
+  if (noreplyMatch) return noreplyMatch[1].toLowerCase();
   // Local noreply: user@users.noreply.github.com
   const localNoreply = cleanEmail.match(/^([^@]+)@users\.noreply\.github\.com$/);
-  if (localNoreply) return localNoreply[1];
-  // Prefer the display name if present and not garbage
-  if (cleanName && cleanName !== "(no author)" && !/^\d+$/.test(cleanName)) return cleanName;
+  if (localNoreply) return localNoreply[1].toLowerCase();
+  // Prefer the display name if present and not garbage — casefold for stable merge
+  if (cleanName && cleanName !== "(no author)" && !/^\d+$/.test(cleanName)) {
+    return cleanName.toLocaleLowerCase("en-US");
+  }
   // Fall back to email local part
-  return cleanEmail.split("@")[0] || "unknown";
+  return (cleanEmail.split("@")[0] || "unknown").toLowerCase();
+}
+
+/** Run async work over items with a fixed concurrency cap. */
+async function mapPool(items, concurrency, workerFn, onProgress) {
+  const total = items.length;
+  if (total === 0) return [];
+  const results = new Array(total);
+  let nextIndex = 0;
+  let completed = 0;
+
+  async function runWorker() {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= total) return;
+      results[index] = await workerFn(items[index], index);
+      completed++;
+      if (onProgress) onProgress(completed, total);
+    }
+  }
+
+  const poolSize = Math.min(concurrency, total);
+  await Promise.all(Array.from({ length: poolSize }, () => runWorker()));
+  return results;
+}
+
+function reportBlameProgress(done, total) {
+  if (!process.stderr.isTTY) return;
+  process.stderr.write(`\r${done}/${total} files`);
+  if (done === total) process.stderr.write("\n");
 }
 
 /**
- * Build a per-file line-ownership map using git blame.
+ * Parse one file's --line-porcelain blame into author line counts.
+ * Returns null when the file has no countable lines.
+ */
+function parseBlamePorcelain(text) {
+  const counts = {};
+  let total = 0;
+  const entries = text.split("\n");
+  for (let i = 0; i < entries.length; i++) {
+    if (entries[i].startsWith("author ")) {
+      const name = entries[i].slice(7);
+      let email = "";
+      if (i + 1 < entries.length && entries[i + 1].startsWith("author-mail ")) {
+        email = entries[i + 1].slice(12);
+      }
+      const id = normalizeAuthor(name, email);
+      counts[id] = (counts[id] || 0) + 1;
+      total++;
+    }
+  }
+  if (total === 0) return null;
+  return { counts, total };
+}
+
+/**
+ * Build a per-file line-ownership map using git blame (parallel, capped).
  * Returns: { file: { author: lineCount, total: N } }
  * Skips lockfiles, binaries, and generated files.
  */
-function blameOwnership(repoDir) {
+async function blameOwnership(repoDir) {
   // Files tracked in HEAD, excluding obvious generated junk
   const tracked = git(repoDir, ["ls-files", "-z"])
     .split("\0")
@@ -80,35 +171,23 @@ function blameOwnership(repoDir) {
   const ownership = {};
   const skipped = tracked.length - files.length;
 
-  for (const file of files) {
-    let lines;
-    try {
-      // Blame HEAD, not the working tree — otherwise uncommitted edits
-      // produce a phantom "Not Committed Yet" author.
-      lines = git(repoDir, ["blame", "HEAD", "--line-porcelain", "--", file]);
-    } catch {
-      continue; // binary or unblamable — skip
-    }
-    const counts = {};
-    let total = 0;
-    // --line-porcelain emits "author <name>" then "author-mail <email>" per line
-    const entries = lines.split("\n");
-    for (let i = 0; i < entries.length; i++) {
-      if (entries[i].startsWith("author ")) {
-        const name = entries[i].slice(7);
-        let email = "";
-        if (i + 1 < entries.length && entries[i + 1].startsWith("author-mail ")) {
-          email = entries[i + 1].slice(12);
-        }
-        const id = normalizeAuthor(name, email);
-        counts[id] = (counts[id] || 0) + 1;
-        total++;
+  await mapPool(
+    files,
+    BLAME_CONCURRENCY,
+    async (file) => {
+      let text;
+      try {
+        // Blame HEAD, not the working tree — otherwise uncommitted edits
+        // produce a phantom "Not Committed Yet" author.
+        text = await gitAsync(repoDir, ["blame", "HEAD", "--line-porcelain", "--", file]);
+      } catch {
+        return; // binary or unblamable — skip
       }
-    }
-    if (total > 0) {
-      ownership[file] = { counts, total };
-    }
-  }
+      const parsed = parseBlamePorcelain(text);
+      if (parsed) ownership[file] = parsed;
+    },
+    reportBlameProgress
+  );
 
   return { ownership, skippedFiles: skipped };
 }
@@ -142,7 +221,7 @@ function authorTotals(ownership) {
 
 /**
  * Expertise map: files where an author is the dominant owner.
- * Also flags "lonely files": bus factor 1 AND no other author over 10%.
+ * lonelyFiles = bus-factor-1 files (top author owns ≥ 80% of lines).
  */
 function expertiseMap(analysis) {
   const map = {};
@@ -184,31 +263,33 @@ function repoMeta(repoDir) {
 }
 
 /** Full analysis pipeline. */
-function analyze(repoDir) {
+async function analyze(repoDir) {
   if (!isRepo(repoDir)) {
     throw new Error(`${repoDir} is not a git repository`);
   }
-  const { ownership, skippedFiles } = blameOwnership(repoDir);
+  if (!hasCommits(repoDir)) {
+    throw new Error("no commits to analyze");
+  }
+  const { ownership, skippedFiles } = await blameOwnership(repoDir);
   const analysis = busFactorAnalysis(ownership);
   const totals = authorTotals(ownership);
   const { map, lonelyFiles } = expertiseMap(analysis);
   const meta = repoMeta(repoDir);
 
-  // Danger files: bus factor 1 + small (hard to hand off, single owner)
+  // Danger files: bus-factor-1 files with ≥ 85% single-author share (no size floor)
   const dangerFiles = lonelyFiles
     .filter((f) => f.topShare >= 0.85)
     .sort((a, b) => b.total - a.total);
+
+  const lonelySorted = lonelyFiles.sort((a, b) => b.total - a.total);
 
   return {
     meta,
     authors: Object.entries(totals)
       .map(([name, lines]) => ({ name, lines }))
       .sort((a, b) => b.lines - a.lines),
-    busFactorFiles: Object.entries(analysis)
-      .filter(([, info]) => info.busFactor === 1)
-      .map(([file, info]) => ({ file, ...info }))
-      .sort((a, b) => b.total - a.total),
-    lonelyFiles: lonelyFiles.sort((a, b) => b.total - a.total),
+    // Single concept: bus-factor-1 / single-owner files
+    lonelyFiles: lonelySorted,
     dangerFiles,
     expertise: map,
     skippedFiles,
@@ -219,4 +300,13 @@ function analyze(repoDir) {
   };
 }
 
-module.exports = { analyze, isRepo, blameOwnership, busFactorAnalysis, authorTotals, normalizeAuthor };
+module.exports = {
+  analyze,
+  isRepo,
+  hasCommits,
+  blameOwnership,
+  busFactorAnalysis,
+  authorTotals,
+  normalizeAuthor,
+  stripMailAngles,
+};

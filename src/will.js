@@ -144,13 +144,14 @@ async function draftWill(opts) {
   const { analysis } = opts;
   const repoName = opts.repoName || path.basename(process.cwd());
   const a = opts.answers || {};
-
-  const prompter = createPrompter();
   const answers = { ...a };
 
-  try {
-    await prompter.ready(); // drain piped stdin before asking anything
-    if (!opts.skipPrompts) {
+  // skipPrompts (--yes / pre-filled): never touch stdin — avoids hanging when
+  // callers invoke draftWill from a long-lived process (tests, libraries).
+  if (!opts.skipPrompts) {
+    const prompter = createPrompter();
+    try {
+      await prompter.ready(); // drain piped stdin before asking anything
       if (!answers.maintainer) {
         const top = analysis.authors[0];
         answers.maintainer = await prompter.ask(
@@ -176,13 +177,26 @@ async function draftWill(opts) {
         const defYes = analysis.dangerFiles.length > 0;
         answers.blessed = await prompter.askYesNo("▸ Are there files ONLY you understand right now?", defYes);
       }
+    } finally {
+      prompter.close();
     }
-  } finally {
-    prompter.close();
   }
 
   const lonely = analysis.lonelyFiles;
-  const topAuthor = analysis.authors[0] ? analysis.authors[0].name : "unknown";
+
+  let busFactorLine;
+  if (lonely.length === 0) {
+    busFactorLine = "**Bus factor:** healthy — no single-owner files detected.";
+  } else if (lonely.length === 1) {
+    const f = lonely[0];
+    busFactorLine =
+      `**Bus factor alert:** 1 file is single-owner ` +
+      `(\`${f.file}\` — ${Math.round(f.topShare * 100)}% by ${f.topAuthor}).`;
+  } else {
+    busFactorLine =
+      `**Bus factor alert:** ${lonely.length} files are single-owner ` +
+      `(see per-file owners below).`;
+  }
 
   const md = [
     "# WILL.md — succession plan for " + repoName,
@@ -208,9 +222,7 @@ async function draftWill(opts) {
     "|--------|------:|",
     ...analysis.authors.slice(0, 6).map((x) => `| ${x.name} | ${x.lines} |`),
     "",
-    lonely.length > 0
-      ? `**Bus factor alert:** ${lonely.length} file${lonely.length === 1 ? "" : "s"} are single-owner ("${topAuthor}" understands them alone).`
-      : "**Bus factor:** healthy — no single-owner files detected.",
+    busFactorLine,
     "",
     "### Files only one person understands",
     "",

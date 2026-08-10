@@ -76,9 +76,9 @@ printf "waxhy\nmarco\nwaxhy + marco\ntake the good parts, archive the rest\n\n" 
 ## What it detects
 
 - **Per-file line ownership** — who actually authored each file (via `git blame`)
-- **Bus factor** — files where ONE author holds ≥ 80% of the knowledge
-- **Danger files** — single-owner files over 100 lines (the ones that hurt)
-- **Knowledge map** — which files each author uniquely understands
+- **Bus factor** — files where ONE author holds ≥ 80% of the lines
+- **Danger files** — bus-factor-1 files where one author holds ≥ 85% of the lines (sorted by size; no minimum line count)
+- **Knowledge map** — which files each author dominates by line ownership
 - **Generated junk** — lockfiles, binaries, build output (auto-skipped so they don't pollute the analysis)
 
 ## The WILL.md

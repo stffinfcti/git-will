@@ -14,6 +14,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const readline = require("readline");
 const { analyze } = require("../src/analyze");
 const { draftWill } = require("../src/will");
 
@@ -25,10 +26,13 @@ const YELLOW = "\x1b[38;2;245;158;11m";
 const RED = "\x1b[38;2;239;68;68m";
 const DIM = "\x1b[2m";
 const CYAN = "\x1b[38;2;6;182;212m";
-const NO_COLOR = process.env.NO_COLOR !== undefined || process.env.TERM === "dumb";
+const USE_COLOR =
+  process.env.NO_COLOR === undefined &&
+  process.env.TERM !== "dumb" &&
+  Boolean(process.stdout.isTTY);
 
 function c(code, text) {
-  return NO_COLOR ? text : code + text + RESET;
+  return USE_COLOR ? code + text + RESET : text;
 }
 
 function usage() {
@@ -106,6 +110,39 @@ function renderPaper(result) {
   return lines.join("\n");
 }
 
+/** Ask a single yes/no on stdin when TTY. */
+function confirmOverwrite(outPath) {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+    rl.question(`WILL.md already exists at ${outPath}. Overwrite? [y/N] `, (answer) => {
+      rl.close();
+      resolve(/^y|yes/i.test((answer || "").trim()));
+    });
+  });
+}
+
+/**
+ * Refuse silent overwrite. Interactive TTY can confirm; --yes / non-TTY must error.
+ * On confirmed overwrite, backs up to WILL.md.bak first.
+ */
+async function prepareWillWrite(outPath, yesMode) {
+  if (!fs.existsSync(outPath)) return;
+  const canConfirm = !yesMode && Boolean(process.stdin.isTTY);
+  if (!canConfirm) {
+    throw new Error(
+      `WILL.md already exists at ${outPath}. Remove or rename it, then re-run` +
+        (yesMode ? "." : " (or run interactively to confirm overwrite).")
+    );
+  }
+  const ok = await confirmOverwrite(outPath);
+  if (!ok) {
+    throw new Error("Aborted — existing WILL.md left untouched.");
+  }
+  const bakPath = outPath + ".bak";
+  fs.copyFileSync(outPath, bakPath);
+  console.error(c(DIM, `Backed up existing WILL.md → ${bakPath}`));
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const command = args[0] || "usage";
@@ -115,17 +152,26 @@ async function main() {
     console.log(require("../package.json").version);
     return;
   }
-  if (command === "--help" || command === "-h" || command === "help") {
+  if (command === "--help" || command === "-h" || command === "help" || command === "usage") {
     usage();
+    return;
+  }
+
+  const known = new Set(["scan", "draft", "paper"]);
+  if (!known.has(command)) {
+    usage();
+    process.exitCode = 1;
     return;
   }
 
   let result;
   try {
-    result = analyze(repoDir);
+    result = await analyze(repoDir);
   } catch (err) {
     console.error(c(RED, "✗ " + err.message));
-    console.error(c(DIM, "  Hint: run inside a git repository."));
+    if (/not a git repository/i.test(err.message)) {
+      console.error(c(DIM, "  Hint: run inside a git repository."));
+    }
     process.exit(1);
   }
 
@@ -147,6 +193,12 @@ async function main() {
   if (command === "draft") {
     const yesMode = args.includes("--yes") || args.includes("-y");
     const outPath = path.join(repoDir, "WILL.md");
+    try {
+      await prepareWillWrite(outPath, yesMode);
+    } catch (err) {
+      console.error(c(RED, "✗ " + err.message));
+      process.exit(1);
+    }
     let md;
     if (yesMode) {
       // CI-safe defaults: no interactivity
@@ -175,8 +227,6 @@ async function main() {
     console.log(c(DIM, "  Read it. Then write the will you want to leave."));
     return;
   }
-
-  usage();
 }
 
 main().catch((err) => {
