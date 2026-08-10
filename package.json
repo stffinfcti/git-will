@@ -1,6 +1,6 @@
 {
   "name": "git-will",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Your repo has no will. If you vanish tomorrow, the code dies with you. git-will writes the succession plan while you're still alive.",
   "keywords": [
     "git",
@@ -12,7 +12,7 @@
   ],
   "license": "MIT",
   "bin": {
-    "git-will": "bin/git-will.js"
+    "git-will": "./bin/git-will.js"
   },
   "main": "src/index.js",
   "files": [
