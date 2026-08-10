@@ -1,9 +1,10 @@
 {
   "name": "git-will",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Your repo has no will. If you vanish tomorrow, the code dies with you. git-will writes the succession plan while you're still alive.",
   "keywords": ["git", "bus-factor", "succession", "handoff", "maintainer", "open-source"],
   "license": "MIT",
+  "author": "waxhy",
   "bin": {
     "git-will": "./bin/git-will.js"
   },
@@ -19,5 +20,9 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/stffinfcti/git-will.git"
+  },
+  "homepage": "https://github.com/stffinfcti/git-will#readme",
+  "bugs": {
+    "url": "https://github.com/stffinfcti/git-will/issues"
   }
 }

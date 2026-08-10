@@ -18,10 +18,13 @@ Zero dependencies. Runs locally on your git history. Nothing leaves your machine
 ## Usage
 
 ```bash
-git-will scan              # Analyze ownership + bus factor
+git-will scan              # Analyze ownership + bus factor (git blame)
 git-will scan --json       # Machine-readable analysis (versioned schema: git-will@1)
+git-will scan --fast       # Faster approximate analysis via git log --numstat
 git-will draft             # Interactively write WILL.md
 git-will draft --yes       # Write WILL.md with defaults (CI-safe)
+git-will draft --force     # Overwrite existing WILL.md (backs up to WILL.md.bak)
+git-will --dir <path> …    # Run against another repo without cd
 ```
 
 ### `git-will scan`
@@ -32,7 +35,7 @@ git-will draft --yes       # Write WILL.md with defaults (CI-safe)
 └──────────────────────────────────────────┘
 
 repo https://github.com/stffinfcti/codiev.git
-branch main  ·  commits 449
+branch main  ·  commits 449  ·  repo bus factor ~2
 
 Authors
 ───────
@@ -45,8 +48,8 @@ Bus factor 1 — files only one person understands
   ⚠ codiev-core/codiev/agents.py              96% by stffinfcti
   ⚠ codiev-core/codiev/run_agent.py           99% by Ford Openclaw
 
-Most dangerous — single owner, meaningful size
-──────────────────────────────────────────────
+Most dangerous — highest single-owner share
+──────────────────────────────────────────
   ✗ codiev-core/codiev/agents.py    15836 lines, 96% by stffinfcti
   ✗ codiev-core/codiev/run_agent.py  10864 lines, 99% by Ford Openclaw
 
@@ -75,11 +78,14 @@ printf "waxhy\nmarco\nwaxhy + marco\ntake the good parts, archive the rest\n\n" 
 
 ## What it detects
 
-- **Per-file line ownership** — who actually authored each file (via `git blame`)
-- **Bus factor** — files where ONE author holds ≥ 80% of the lines
+- **Per-file line ownership** — who authored each file (default: `git blame --use-mailmap`; honors `.mailmap`)
+- **Bus factor (per file)** — files where ONE author holds ≥ 80% of the lines
+- **Repo bus factor (~N)** — truck-factor style heuristic: greedy removal of knowledge owners until ≤ 50% of owned files retain an owner (documented estimate, not a research metric)
 - **Danger files** — bus-factor-1 files where one author holds ≥ 85% of the lines (sorted by size; no minimum line count)
 - **Knowledge map** — which files each author dominates by line ownership
 - **Generated junk** — lockfiles, binaries, build output (auto-skipped so they don't pollute the analysis)
+
+`--fast` trades blame accuracy for speed: ownership is approximated from `git log --numstat` (lines added per author), which is better for huge repos and CI timeouts.
 
 ## The WILL.md
 
