@@ -43,7 +43,7 @@ function c(code, text) {
 function usage() {
   console.log(c(BRAND + BOLD, "git-will") + c(DIM, "  v" + pkg.version));
   console.log(c(DIM, "Your repo has no will. This writes it.\n"));
-  console.log(c(BOLD, "Usage"));
+  console.log(c(BOLD, "Usage:"));
   console.log("  " + c(CYAN, "git-will scan") + "              " + c(DIM, "Analyze ownership + bus factor"));
   console.log("  " + c(CYAN, "git-will scan --json") + "      " + c(DIM, "Machine-readable JSON (schema git-will@1)"));
   console.log("  " + c(CYAN, "git-will scan --fast") + "      " + c(DIM, "Faster approximate analysis (numstat)"));
