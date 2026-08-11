@@ -23,14 +23,17 @@ const { draftWill } = require("../src/will");
 
 const pkg = require("../package.json");
 
+// Chrome palette — cool steel, ice accent (no purple)
 const BOLD = "\x1b[1m";
 const RESET = "\x1b[0m";
-const BRAND = "\x1b[38;2;59;130;246m";
-const GREEN = "\x1b[38;2;16;185;129m";
-const YELLOW = "\x1b[38;2;245;158;11m";
-const RED = "\x1b[38;2;239;68;68m";
 const DIM = "\x1b[2m";
-const CYAN = "\x1b[38;2;6;182;212m";
+const STEEL = "\x1b[38;2;156;163;175m"; // chrome mid
+const BRIGHT = "\x1b[38;2;229;231;235m"; // polished highlight
+const ICE = "\x1b[38;2;125;211;252m"; // ice accent
+const GREEN = "\x1b[38;2;52;211;153m";
+const YELLOW = "\x1b[38;2;251;191;36m";
+const RED = "\x1b[38;2;248;113;113m";
+
 const USE_COLOR =
   process.env.NO_COLOR === undefined &&
   process.env.TERM !== "dumb" &&
@@ -41,17 +44,23 @@ function c(code, text) {
 }
 
 function usage() {
-  console.log(c(BRAND + BOLD, "git-will") + c(DIM, "  v" + pkg.version));
-  console.log(c(DIM, "Your repo has no will. This writes it.\n"));
+  const w = 52;
+  console.log(chromeFrame("git-will", "v" + pkg.version, w));
+  console.log(c(DIM, "  Your repo has no will. This writes it.\n"));
   console.log(c(BOLD, "Usage:"));
-  console.log("  " + c(CYAN, "git-will scan") + "              " + c(DIM, "Analyze ownership + bus factor"));
-  console.log("  " + c(CYAN, "git-will scan --json") + "      " + c(DIM, "Machine-readable JSON (schema git-will@1)"));
-  console.log("  " + c(CYAN, "git-will scan --fast") + "      " + c(DIM, "Faster approximate analysis (numstat)"));
-  console.log("  " + c(CYAN, "git-will draft") + "             " + c(DIM, "Interactively write WILL.md"));
-  console.log("  " + c(CYAN, "git-will draft --yes") + "       " + c(DIM, "Write WILL.md with defaults (CI-safe)"));
-  console.log("  " + c(CYAN, "git-will draft --force") + "     " + c(DIM, "Overwrite WILL.md (backs up to .bak)"));
-  console.log("  " + c(CYAN, "git-will --dir <path>") + "      " + c(DIM, "Analyze a repo at <path> instead of cwd"));
-  console.log("  " + c(CYAN, "git-will --version") + "        " + c(DIM, "Show version"));
+  const rows = [
+    ["git-will scan", "Analyze ownership + bus factor"],
+    ["git-will scan --json", "Machine-readable JSON (git-will@1)"],
+    ["git-will scan --fast", "Faster approximate analysis (numstat)"],
+    ["git-will draft", "Interactively write WILL.md"],
+    ["git-will draft --yes", "Write WILL.md with defaults (CI-safe)"],
+    ["git-will draft --force", "Overwrite WILL.md (backs up to .bak)"],
+    ["git-will --dir <path>", "Analyze a repo at <path> instead of cwd"],
+    ["git-will --version", "Show version"],
+  ];
+  for (const [cmd, desc] of rows) {
+    console.log("  " + c(ICE, cmd.padEnd(26)) + c(DIM, desc));
+  }
 }
 
 function pct(share) {
@@ -66,6 +75,41 @@ function truncPath(file, width) {
   const head = Math.ceil(keep * 0.4);
   const tail = keep - head;
   return (file.slice(0, head) + "…" + file.slice(-tail)).padEnd(width);
+}
+
+/** Chrome double-line frame with title + optional right badge. */
+function chromeFrame(title, badge, width) {
+  const inner = width - 2;
+  const label = " " + title + " ";
+  const right = badge ? " " + badge + " " : "";
+  const fill = Math.max(0, inner - label.length - right.length);
+  const t =
+    c(STEEL + BOLD, "╔") + c(BRIGHT, "═".repeat(inner)) + c(STEEL + BOLD, "╗");
+  const m =
+    c(STEEL + BOLD, "║") +
+    c(BRIGHT + BOLD, label) +
+    " ".repeat(fill) +
+    c(ICE, right) +
+    c(STEEL + BOLD, "║");
+  const b =
+    c(STEEL + BOLD, "╚") + c(STEEL, "═".repeat(inner)) + c(STEEL + BOLD, "╝");
+  return [t, m, b].join("\n");
+}
+
+function section(title) {
+  return (
+    c(STEEL, "── ") +
+    c(BRIGHT + BOLD, title) +
+    " " +
+    c(STEEL, "─".repeat(Math.max(4, 40 - title.length)))
+  );
+}
+
+function meter(ratio, width) {
+  const filled = Math.max(0, Math.min(width, Math.round(ratio * width)));
+  const empty = width - filled;
+  // metallic bar: solid + shaded rest
+  return c(ICE, "▓".repeat(filled)) + c(STEEL + DIM, "░".repeat(empty));
 }
 
 /** Parse argv into { command, flags, dir }. */
@@ -112,20 +156,20 @@ function riskBanner(result) {
     return {
       label: "CRITICAL",
       tone: RED,
-      detail: `${lonely} single-owner file${lonely === 1 ? "" : "s"} · repo bus factor ~${bf}`,
+      detail: `${lonely} single-owner file${lonely === 1 ? "" : "s"} · bus factor ~${bf}`,
     };
   }
   if (bf === 2) {
     return {
       label: "ELEVATED",
       tone: YELLOW,
-      detail: `${lonely} single-owner file${lonely === 1 ? "" : "s"} · repo bus factor ~${bf}`,
+      detail: `${lonely} single-owner file${lonely === 1 ? "" : "s"} · bus factor ~${bf}`,
     };
   }
   return {
     label: "WATCH",
-    tone: CYAN,
-    detail: `${lonely} single-owner file${lonely === 1 ? "" : "s"} · repo bus factor ~${bf}`,
+    tone: ICE,
+    detail: `${lonely} single-owner file${lonely === 1 ? "" : "s"} · bus factor ~${bf}`,
   };
 }
 
@@ -135,78 +179,106 @@ function renderPaper(result) {
   const repoLabel = meta.remote
     ? meta.remote.replace(/^.*[\/:]([^\/:]+?)(\.git)?$/, "$1")
     : "this repo";
-  const title = "GIT WILL — " + repoLabel;
-  const boxW = Math.max(44, title.length + 4);
-  const bar = "─".repeat(boxW - 2);
-  const pad = (s) => "│  " + s + " ".repeat(Math.max(0, boxW - 6 - s.length)) + "  │";
+  const width = 56;
 
-  lines.push(c(BRAND + BOLD, "┌" + bar + "┐"));
-  lines.push(c(BRAND + BOLD, pad(title)));
-  lines.push(c(BRAND + BOLD, "└" + bar + "┘"));
+  lines.push(chromeFrame("GIT WILL", repoLabel.slice(0, 22), width));
   lines.push("");
 
   const risk = riskBanner(result);
   lines.push(
-    c(DIM, "risk ") + c(risk.tone + BOLD, risk.label) + c(DIM, "  ·  ") + c(DIM, risk.detail)
+    "  " +
+      c(STEEL, "┌ risk ") +
+      c(risk.tone + BOLD, " " + risk.label + " ") +
+      c(STEEL, "┐")
   );
-  if (meta.remote) lines.push(c(DIM, "repo ") + c(CYAN, meta.remote));
-  const bits = [
-    c(DIM, "branch ") + meta.branch,
-    c(DIM, "commits ") + meta.commitCount,
-    c(DIM, "files ") + String(result.totals.files),
+  lines.push("  " + c(DIM, risk.detail));
+  lines.push("");
+
+  if (meta.remote) {
+    lines.push("  " + c(STEEL, "repo") + "   " + c(ICE, meta.remote));
+  }
+  const metaBits = [
+    c(STEEL, "branch") + " " + meta.branch,
+    c(STEEL, "commits") + " " + meta.commitCount,
+    c(STEEL, "files") + " " + String(result.totals.files),
   ];
-  if (meta.mode === "fast") bits.push(c(DIM, "mode ") + "fast");
-  lines.push(bits.join(c(DIM, "  ·  ")));
+  if (meta.mode === "fast") metaBits.push(c(STEEL, "mode") + " fast");
+  lines.push("  " + metaBits.join(c(DIM, "  ·  ")));
   lines.push("");
 
   // Authors
   const totalLines = result.totals.totalLines || 1;
-  lines.push(c(BOLD, "Authors"));
-  lines.push(c(DIM, "───────"));
+  lines.push(section("AUTHORS"));
   if (result.authors.length === 0) {
     lines.push("  " + c(DIM, "No authorship data."));
   } else {
     const top = result.authors[0].lines || 1;
     for (const author of result.authors.slice(0, 8)) {
-      const barLen = Math.max(1, Math.round((author.lines / top) * 28));
-      const share = pct(author.lines / totalLines);
+      const share = author.lines / totalLines;
       lines.push(
-        `  ${c(GREEN, "●")} ${author.name.padEnd(20)} ${String(author.lines).padStart(7)}  ${c(DIM, share.padStart(4))}  ${c(CYAN, "█".repeat(barLen))}`
+        "  " +
+          c(BRIGHT, author.name.padEnd(18)) +
+          c(DIM, String(author.lines).padStart(7)) +
+          "  " +
+          c(STEEL, pct(share).padStart(4)) +
+          "  " +
+          meter(author.lines / top, 22)
       );
     }
   }
   lines.push("");
 
   // Bus factor files
-  lines.push(c(BOLD, "Bus factor 1 — single-owner files"));
-  lines.push(c(DIM, "────────────────────────────────"));
+  lines.push(section("BUS FACTOR 1"));
   const lonely = result.lonelyFiles;
   if (lonely.length === 0) {
-    lines.push("  " + c(GREEN, "✓") + " No single-owner files. Looking good.");
+    lines.push("  " + c(GREEN, "✓") + c(DIM, "  No single-owner files. Looking good."));
   } else {
     for (const f of lonely.slice(0, 10)) {
       lines.push(
-        `  ${c(YELLOW, "!")} ${truncPath(f.file, 38)} ${pct(f.topShare).padStart(4)}  ${c(DIM, f.topAuthor)}`
+        "  " +
+          c(YELLOW, "▸") +
+          " " +
+          truncPath(f.file, 34) +
+          " " +
+          c(BRIGHT, pct(f.topShare).padStart(4)) +
+          "  " +
+          c(DIM, f.topAuthor)
       );
     }
-    if (lonely.length > 10) lines.push(`  ${c(DIM, `…and ${lonely.length - 10} more`)}`);
+    if (lonely.length > 10) {
+      lines.push("  " + c(DIM, `…and ${lonely.length - 10} more`));
+    }
   }
   lines.push("");
 
   // Danger files
   if (result.dangerFiles.length > 0) {
-    lines.push(c(BOLD, "Most concentrated ownership"));
-    lines.push(c(DIM, "──────────────────────────"));
+    lines.push(section("HOT FILES"));
     for (const f of result.dangerFiles.slice(0, 5)) {
       lines.push(
-        `  ${c(RED, "✗")} ${truncPath(f.file, 36)} ${String(f.total).padStart(6)} ln  ${pct(f.topShare)} ${c(DIM, f.topAuthor)}`
+        "  " +
+          c(RED, "●") +
+          " " +
+          truncPath(f.file, 32) +
+          " " +
+          c(DIM, String(f.total).padStart(5) + " ln") +
+          "  " +
+          c(BRIGHT, pct(f.topShare)) +
+          " " +
+          c(DIM, f.topAuthor)
       );
     }
     lines.push("");
   }
 
+  lines.push(c(STEEL, "─".repeat(width)));
   lines.push(
-    c(DIM, "Next  ") + c(CYAN, "git-will draft") + c(DIM, "  — write the will while you're still alive.")
+    "  " +
+      c(DIM, "next") +
+      "  " +
+      c(ICE + BOLD, "git-will draft") +
+      c(DIM, "  — write the will while you're still alive")
   );
   return lines.join("\n");
 }
@@ -215,19 +287,13 @@ function renderPaper(result) {
 function confirmOverwrite(outPath) {
   return new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
-    rl.question(`WILL.md already exists at ${outPath}. Overwrite? [y/N] `, (answer) => {
+    rl.question(c(STEEL, "WILL.md exists. Overwrite? [y/N] "), (answer) => {
       rl.close();
       resolve(/^y|yes/i.test((answer || "").trim()));
     });
   });
 }
 
-/**
- * Refuse silent overwrite.
- * - --force: backup to WILL.md.bak and proceed
- * - interactive TTY: confirm, then backup
- * - --yes / non-TTY without --force: error
- */
 async function prepareWillWrite(outPath, { yesMode, force }) {
   if (!fs.existsSync(outPath)) return;
 
@@ -247,7 +313,7 @@ async function prepareWillWrite(outPath, { yesMode, force }) {
 
   const bakPath = outPath + ".bak";
   fs.copyFileSync(outPath, bakPath);
-  console.error(c(DIM, `Backed up existing WILL.md → ${bakPath}`));
+  console.error(c(DIM, `  backed up → ${bakPath}`));
   return proceed;
 }
 
@@ -331,12 +397,10 @@ async function main() {
     const force = flags.has("--force");
     const outPath = path.join(repoDir, "WILL.md");
 
-    // Small scan summary before prompts
     const risk = riskBanner(result);
+    console.log(chromeFrame("DRAFT WILL", risk.label, 48));
     console.log(
-      c(DIM, "scan ") +
-        c(risk.tone + BOLD, risk.label) +
-        c(DIM, `  ·  ${result.authors.length} authors  ·  ${result.lonelyFiles.length} single-owner files\n`)
+      c(DIM, `  ${result.authors.length} authors  ·  ${result.lonelyFiles.length} single-owner files\n`)
     );
 
     try {
@@ -369,7 +433,7 @@ async function main() {
     }
     fs.writeFileSync(outPath, md, "utf8");
     console.log("");
-    console.log(c(GREEN + BOLD, "✓ Wrote ") + c(CYAN, outPath));
+    console.log(c(GREEN + BOLD, "✓") + " " + c(BRIGHT, "Wrote ") + c(ICE, outPath));
     console.log(c(DIM, "  Commit it. Keep it current. That’s the whole point."));
     return;
   }
