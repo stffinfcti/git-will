@@ -152,8 +152,9 @@ async function mapPool(items, concurrency, workerFn, onProgress) {
 
 function reportBlameProgress(done, total) {
   if (!process.stderr.isTTY) return;
-  process.stderr.write(`\r${done}/${total} files`);
-  if (done === total) process.stderr.write("\n");
+  const label = `analyzing ${done}/${total} files`;
+  process.stderr.write(`\r${label}${" ".repeat(Math.max(0, 36 - label.length))}`);
+  if (done === total) process.stderr.write("\r" + " ".repeat(40) + "\r");
 }
 
 /**

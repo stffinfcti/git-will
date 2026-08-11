@@ -21,6 +21,8 @@ const readline = require("readline");
 const { analyze } = require("../src/analyze");
 const { draftWill } = require("../src/will");
 
+const pkg = require("../package.json");
+
 const BOLD = "\x1b[1m";
 const RESET = "\x1b[0m";
 const BRAND = "\x1b[38;2;59;130;246m";
@@ -39,9 +41,9 @@ function c(code, text) {
 }
 
 function usage() {
-  console.log(c(BRAND + BOLD, "git-will"));
+  console.log(c(BRAND + BOLD, "git-will") + c(DIM, "  v" + pkg.version));
   console.log(c(DIM, "Your repo has no will. This writes it.\n"));
-  console.log("Usage:");
+  console.log(c(BOLD, "Usage"));
   console.log("  " + c(CYAN, "git-will scan") + "              " + c(DIM, "Analyze ownership + bus factor"));
   console.log("  " + c(CYAN, "git-will scan --json") + "      " + c(DIM, "Machine-readable JSON (schema git-will@1)"));
   console.log("  " + c(CYAN, "git-will scan --fast") + "      " + c(DIM, "Faster approximate analysis (numstat)"));
@@ -54,6 +56,16 @@ function usage() {
 
 function pct(share) {
   return Math.round(share * 100) + "%";
+}
+
+/** Truncate path in the middle if longer than width. */
+function truncPath(file, width) {
+  if (file.length <= width) return file.padEnd(width);
+  if (width < 8) return file.slice(0, width);
+  const keep = width - 1;
+  const head = Math.ceil(keep * 0.4);
+  const tail = keep - head;
+  return (file.slice(0, head) + "…" + file.slice(-tail)).padEnd(width);
 }
 
 /** Parse argv into { command, flags, dir }. */
@@ -85,10 +97,36 @@ function parseArgs(argv) {
       command = a;
       continue;
     }
-    // Unknown positional after command — treat as error later via unused
     flags.add("__extra__:" + a);
   }
   return { command: command || "usage", flags, dir };
+}
+
+function riskBanner(result) {
+  const lonely = result.lonelyFiles.length;
+  const bf = result.repoBusFactor;
+  if (lonely === 0) {
+    return { label: "HEALTHY", tone: GREEN, detail: "no single-owner files detected" };
+  }
+  if (bf <= 1) {
+    return {
+      label: "CRITICAL",
+      tone: RED,
+      detail: `${lonely} single-owner file${lonely === 1 ? "" : "s"} · repo bus factor ~${bf}`,
+    };
+  }
+  if (bf === 2) {
+    return {
+      label: "ELEVATED",
+      tone: YELLOW,
+      detail: `${lonely} single-owner file${lonely === 1 ? "" : "s"} · repo bus factor ~${bf}`,
+    };
+  }
+  return {
+    label: "WATCH",
+    tone: CYAN,
+    detail: `${lonely} single-owner file${lonely === 1 ? "" : "s"} · repo bus factor ~${bf}`,
+  };
 }
 
 function renderPaper(result) {
@@ -98,46 +136,57 @@ function renderPaper(result) {
     ? meta.remote.replace(/^.*[\/:]([^\/:]+?)(\.git)?$/, "$1")
     : "this repo";
   const title = "GIT WILL — " + repoLabel;
-  const boxW = Math.max(42, title.length + 4);
+  const boxW = Math.max(44, title.length + 4);
   const bar = "─".repeat(boxW - 2);
   const pad = (s) => "│  " + s + " ".repeat(Math.max(0, boxW - 6 - s.length)) + "  │";
+
   lines.push(c(BRAND + BOLD, "┌" + bar + "┐"));
   lines.push(c(BRAND + BOLD, pad(title)));
   lines.push(c(BRAND + BOLD, "└" + bar + "┘"));
   lines.push("");
-  if (meta.remote) lines.push(c(DIM, "repo ") + c(CYAN, meta.remote));
-  const modeNote = meta.mode === "fast" ? c(DIM, "  ·  mode ") + "fast" : "";
-  const bfNote =
-    typeof result.repoBusFactor === "number"
-      ? c(DIM, "  ·  repo bus factor ~") + String(result.repoBusFactor)
-      : "";
+
+  const risk = riskBanner(result);
   lines.push(
-    c(DIM, "branch ") + meta.branch + c(DIM, "  ·  commits ") + meta.commitCount + bfNote + modeNote
+    c(DIM, "risk ") + c(risk.tone + BOLD, risk.label) + c(DIM, "  ·  ") + c(DIM, risk.detail)
   );
+  if (meta.remote) lines.push(c(DIM, "repo ") + c(CYAN, meta.remote));
+  const bits = [
+    c(DIM, "branch ") + meta.branch,
+    c(DIM, "commits ") + meta.commitCount,
+    c(DIM, "files ") + String(result.totals.files),
+  ];
+  if (meta.mode === "fast") bits.push(c(DIM, "mode ") + "fast");
+  lines.push(bits.join(c(DIM, "  ·  ")));
   lines.push("");
 
-  // Authors table
+  // Authors
+  const totalLines = result.totals.totalLines || 1;
   lines.push(c(BOLD, "Authors"));
   lines.push(c(DIM, "───────"));
-  for (const author of result.authors.slice(0, 8)) {
-    const barLen = Math.max(1, Math.round((author.lines / result.authors[0].lines) * 30));
-    const bar = "█".repeat(barLen);
-    lines.push(
-      `  ${c(GREEN, "✓")} ${author.name.padEnd(22)} ${String(author.lines).padStart(7)} ${c(CYAN, bar)}`
-    );
+  if (result.authors.length === 0) {
+    lines.push("  " + c(DIM, "No authorship data."));
+  } else {
+    const top = result.authors[0].lines || 1;
+    for (const author of result.authors.slice(0, 8)) {
+      const barLen = Math.max(1, Math.round((author.lines / top) * 28));
+      const share = pct(author.lines / totalLines);
+      lines.push(
+        `  ${c(GREEN, "●")} ${author.name.padEnd(20)} ${String(author.lines).padStart(7)}  ${c(DIM, share.padStart(4))}  ${c(CYAN, "█".repeat(barLen))}`
+      );
+    }
   }
   lines.push("");
 
   // Bus factor files
-  lines.push(c(BOLD, "Bus factor 1 — files only one person understands"));
-  lines.push(c(DIM, "───────────────────────────────────────────────"));
+  lines.push(c(BOLD, "Bus factor 1 — single-owner files"));
+  lines.push(c(DIM, "────────────────────────────────"));
   const lonely = result.lonelyFiles;
   if (lonely.length === 0) {
-    lines.push("  " + c(GREEN, "✓ No single-owner files detected. Healthy."));
+    lines.push("  " + c(GREEN, "✓") + " No single-owner files. Looking good.");
   } else {
     for (const f of lonely.slice(0, 10)) {
       lines.push(
-        `  ${c(YELLOW, "⚠")} ${f.file.padEnd(40)} ${pct(f.topShare)} ${c(DIM, "by " + f.topAuthor)}`
+        `  ${c(YELLOW, "!")} ${truncPath(f.file, 38)} ${pct(f.topShare).padStart(4)}  ${c(DIM, f.topAuthor)}`
       );
     }
     if (lonely.length > 10) lines.push(`  ${c(DIM, `…and ${lonely.length - 10} more`)}`);
@@ -146,15 +195,19 @@ function renderPaper(result) {
 
   // Danger files
   if (result.dangerFiles.length > 0) {
-    lines.push(c(BOLD, "Most dangerous — highest single-owner share"));
-    lines.push(c(DIM, "──────────────────────────────────────────"));
+    lines.push(c(BOLD, "Most concentrated ownership"));
+    lines.push(c(DIM, "──────────────────────────"));
     for (const f of result.dangerFiles.slice(0, 5)) {
-      lines.push(`  ${c(RED, "✗")} ${f.file.padEnd(40)} ${f.total} lines, ${pct(f.topShare)} by ${f.topAuthor}`);
+      lines.push(
+        `  ${c(RED, "✗")} ${truncPath(f.file, 36)} ${String(f.total).padStart(6)} ln  ${pct(f.topShare)} ${c(DIM, f.topAuthor)}`
+      );
     }
     lines.push("");
   }
 
-  lines.push(c(DIM, "Next: ") + c(CYAN, "git-will draft") + c(DIM, " — write the will while you're still alive."));
+  lines.push(
+    c(DIM, "Next  ") + c(CYAN, "git-will draft") + c(DIM, "  — write the will while you're still alive.")
+  );
   return lines.join("\n");
 }
 
@@ -198,6 +251,11 @@ async function prepareWillWrite(outPath, { yesMode, force }) {
   return proceed;
 }
 
+function clearProgressLine() {
+  if (!process.stderr.isTTY) return;
+  process.stderr.write("\r" + " ".repeat(48) + "\r");
+}
+
 async function main() {
   let parsed;
   try {
@@ -211,7 +269,7 @@ async function main() {
   const repoDir = path.resolve(dir || process.cwd());
 
   if (flags.has("--version") || command === "--version") {
-    console.log(require("../package.json").version);
+    console.log(pkg.version);
     return;
   }
   if (
@@ -224,7 +282,6 @@ async function main() {
     return;
   }
 
-  // Flag-only invocation like `git-will --dir ./foo` with no command → usage
   if (command.startsWith("--")) {
     usage();
     process.exitCode = 1;
@@ -245,12 +302,14 @@ async function main() {
   try {
     result = await analyze(repoDir, { mode });
   } catch (err) {
+    clearProgressLine();
     console.error(c(RED, "✗ " + err.message));
     if (/not a git repository/i.test(err.message)) {
       console.error(c(DIM, "  Hint: run inside a git repository, or pass --dir <path>."));
     }
     process.exit(1);
   }
+  clearProgressLine();
 
   if (command === "scan" || command === "paper") {
     if (asJson) {
@@ -271,6 +330,15 @@ async function main() {
     const yesMode = flags.has("--yes");
     const force = flags.has("--force");
     const outPath = path.join(repoDir, "WILL.md");
+
+    // Small scan summary before prompts
+    const risk = riskBanner(result);
+    console.log(
+      c(DIM, "scan ") +
+        c(risk.tone + BOLD, risk.label) +
+        c(DIM, `  ·  ${result.authors.length} authors  ·  ${result.lonelyFiles.length} single-owner files\n`)
+    );
+
     try {
       await prepareWillWrite(outPath, { yesMode, force });
     } catch (err) {
@@ -279,8 +347,6 @@ async function main() {
     }
     let md;
     if (yesMode) {
-      // CI-safe defaults: no interactivity
-      // blessed = "are there single-owner files?" → true when lonely files exist
       const defaults = {
         maintainer: result.authors[0] ? result.authors[0].name : "you",
         backup: "",
@@ -302,13 +368,15 @@ async function main() {
       });
     }
     fs.writeFileSync(outPath, md, "utf8");
-    console.log(c(GREEN, "✓ Wrote ") + c(CYAN, outPath));
-    console.log(c(DIM, "  Read it. Then write the will you want to leave."));
+    console.log("");
+    console.log(c(GREEN + BOLD, "✓ Wrote ") + c(CYAN, outPath));
+    console.log(c(DIM, "  Commit it. Keep it current. That’s the whole point."));
     return;
   }
 }
 
 main().catch((err) => {
+  clearProgressLine();
   console.error(c(RED, "✗ " + (err.message || err)));
   process.exit(1);
 });

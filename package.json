@@ -1,6 +1,6 @@
 {
   "name": "git-will",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Your repo has no will. If you vanish tomorrow, the code dies with you. git-will writes the succession plan while you're still alive.",
   "keywords": [
     "git",
